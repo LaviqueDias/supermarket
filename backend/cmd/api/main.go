@@ -16,6 +16,6 @@ func main() {
 
 	router := routes.SetupRouter(db)
 
-	log.Println("Servidor rodando na porta :" + cfg.ServerPort)
+	log.Println("Servidor rodando na porta " + cfg.ServerPort)
 	log.Fatal(http.ListenAndServe(cfg.ServerPort, router))
 }

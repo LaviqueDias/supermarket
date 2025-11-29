@@ -1,0 +1,860 @@
+// ============================================
+// cmd/api/main.go
+// ============================================
+package main
+
+import (
+	"log"
+	"net/http"
+	"supermarket/api/routes"
+	"supermarket/internal/database"
+)
+
+func main() {
+	db := database.Connect()
+	defer db.Close()
+
+	router := routes.SetupRouter(db)
+
+	log.Println("🚀 Servidor rodando na porta :8080")
+	log.Fatal(http.ListenAndServe(":8080", router))
+}
+
+// ============================================
+// internal/domain/models/product.go
+// ============================================
+package models
+
+import "time"
+
+type Product struct {
+	ID            int       `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	Price         float64   `json:"price"`
+	StockQuantity int       `json:"stock_quantity"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/models/client.go
+// ============================================
+package models
+
+import "time"
+
+type Client struct {
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/models/employee.go
+// ============================================
+package models
+
+import "time"
+
+type Employee struct {
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/models/cart.go
+// ============================================
+package models
+
+import "time"
+
+type Cart struct {
+	ID        int       `json:"id"`
+	ClientID  int       `json:"client_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/models/cart_item.go
+// ============================================
+package models
+
+import "time"
+
+type CartItem struct {
+	ID        int       `json:"id"`
+	CartID    int       `json:"cart_id"`
+	ProductID int       `json:"product_id"`
+	Quantity  int       `json:"quantity"`
+	UnitPrice float64   `json:"unit_price"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/models/promotion.go
+// ============================================
+package models
+
+import "time"
+
+type Promotion struct {
+	ID              int       `json:"id"`
+	Name            string    `json:"name"`
+	DiscountPercent float64   `json:"discount_percent"`
+	StartDate       string    `json:"start_date"`
+	EndDate         string    `json:"end_date"`
+	Active          bool      `json:"active"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// ============================================
+// internal/domain/repositories/product_repository.go
+// ============================================
+package repositories
+
+import (
+	"database/sql"
+	"supermarket/internal/domain/models"
+)
+
+type ProductRepository struct {
+	db *sql.DB
+}
+
+func NewProductRepository(db *sql.DB) *ProductRepository {
+	return &ProductRepository{db: db}
+}
+
+func (r *ProductRepository) Create(p *models.Product) error {
+	query := `INSERT INTO product (name, description, price, stock_quantity) VALUES (?, ?, ?, ?)`
+	result, err := r.db.Exec(query, p.Name, p.Description, p.Price, p.StockQuantity)
+	if err != nil {
+		return err
+	}
+	id, _ := result.LastInsertId()
+	p.ID = int(id)
+	return nil
+}
+
+func (r *ProductRepository) FindAll() ([]models.Product, error) {
+	query := "SELECT id, name, description, price, stock_quantity, created_at, updated_at FROM product"
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var p models.Product
+		err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
+			continue
+		}
+		products = append(products, p)
+	}
+	return products, nil
+}
+
+func (r *ProductRepository) FindByID(id int) (*models.Product, error) {
+	query := "SELECT id, name, description, price, stock_quantity, created_at, updated_at FROM product WHERE id = ?"
+	var p models.Product
+	err := r.db.QueryRow(query, id).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *ProductRepository) Update(p *models.Product) error {
+	query := `UPDATE product SET name=?, description=?, price=?, stock_quantity=? WHERE id=?`
+	_, err := r.db.Exec(query, p.Name, p.Description, p.Price, p.StockQuantity, p.ID)
+	return err
+}
+
+func (r *ProductRepository) Delete(id int) error {
+	_, err := r.db.Exec("DELETE FROM product WHERE id=?", id)
+	return err
+}
+
+
+
+// ============================================
+// internal/domain/repositories/cart_repository.go
+// ============================================
+package repositories
+
+import (
+	"database/sql"
+	"supermarket/internal/domain/models"
+)
+
+type CartRepository struct {
+	db *sql.DB
+}
+
+func NewCartRepository(db *sql.DB) *CartRepository {
+	return &CartRepository{db: db}
+}
+
+func (r *CartRepository) GetCartByClientID(clientID int) (int, error) {
+	var cartID int
+	err := r.db.QueryRow("SELECT id FROM cart WHERE client_id = ?", clientID).Scan(&cartID)
+	return cartID, err
+}
+
+func (r *CartRepository) AddItem(cartID, productID int, quantity int, price float64) error {
+	var existingID int
+	err := r.db.QueryRow("SELECT id FROM cart_item WHERE cart_id = ? AND product_id = ?", cartID, productID).Scan(&existingID)
+
+	if err == sql.ErrNoRows {
+		query := `INSERT INTO cart_item (cart_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)`
+		_, err = r.db.Exec(query, cartID, productID, quantity, price)
+	} else {
+		query := `UPDATE cart_item SET quantity = quantity + ? WHERE id = ?`
+		_, err = r.db.Exec(query, quantity, existingID)
+	}
+	return err
+}
+
+func (r *CartRepository) GetCartItems(clientID int) ([]map[string]interface{}, float64, error) {
+	query := `
+		SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity, ci.unit_price, 
+		       p.name, p.description
+		FROM cart_item ci
+		JOIN cart c ON ci.cart_id = c.id
+		JOIN product p ON ci.product_id = p.id
+		WHERE c.client_id = ?
+	`
+	rows, err := r.db.Query(query, clientID)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var items []map[string]interface{}
+	var total float64
+
+	for rows.Next() {
+		var ci models.CartItem
+		var productName, productDesc string
+		err := rows.Scan(&ci.ID, &ci.CartID, &ci.ProductID, &ci.Quantity, &ci.UnitPrice, &productName, &productDesc)
+		if err != nil {
+			continue
+		}
+
+		subtotal := ci.UnitPrice * float64(ci.Quantity)
+		total += subtotal
+
+		items = append(items, map[string]interface{}{
+			"id":          ci.ID,
+			"product_id":  ci.ProductID,
+			"name":        productName,
+			"description": productDesc,
+			"quantity":    ci.Quantity,
+			"unit_price":  ci.UnitPrice,
+			"subtotal":    subtotal,
+		})
+	}
+	return items, total, nil
+}
+
+func (r *CartRepository) RemoveItem(itemID int) error {
+	_, err := r.db.Exec("DELETE FROM cart_item WHERE id = ?", itemID)
+	return err
+}
+
+// ============================================
+// internal/domain/repositories/promotion_repository.go
+// ============================================
+package repositories
+
+import (
+	"database/sql"
+	"supermarket/internal/domain/models"
+)
+
+type PromotionRepository struct {
+	db *sql.DB
+}
+
+func NewPromotionRepository(db *sql.DB) *PromotionRepository {
+	return &PromotionRepository{db: db}
+}
+
+func (r *PromotionRepository) Create(p *models.Promotion) error {
+	query := `INSERT INTO promotion (name, discount_percent, start_date, end_date, active) VALUES (?, ?, ?, ?, ?)`
+	result, err := r.db.Exec(query, p.Name, p.DiscountPercent, p.StartDate, p.EndDate, p.Active)
+	if err != nil {
+		return err
+	}
+	id, _ := result.LastInsertId()
+	p.ID = int(id)
+	return nil
+}
+
+func (r *PromotionRepository) FindAll() ([]models.Promotion, error) {
+	query := "SELECT id, name, discount_percent, start_date, end_date, active, created_at, updated_at FROM promotion"
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var promotions []models.Promotion
+	for rows.Next() {
+		var p models.Promotion
+		err := rows.Scan(&p.ID, &p.Name, &p.DiscountPercent, &p.StartDate, &p.EndDate, &p.Active, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
+			continue
+		}
+		promotions = append(promotions, p)
+	}
+	return promotions, nil
+}
+
+func (r *PromotionRepository) AddProduct(promotionID, productID int) error {
+	query := `INSERT INTO promotion_products (promotion_id, product_id) VALUES (?, ?)`
+	_, err := r.db.Exec(query, promotionID, productID)
+	return err
+}
+
+// ============================================
+// internal/usecases/product_usecase.go
+// ============================================
+package usecases
+
+import (
+	"errors"
+	"supermarket/internal/domain/models"
+	"supermarket/internal/domain/repositories"
+)
+
+type ProductUseCase struct {
+	repo *repositories.ProductRepository
+}
+
+func NewProductUseCase(repo *repositories.ProductRepository) *ProductUseCase {
+	return &ProductUseCase{repo: repo}
+}
+
+func (uc *ProductUseCase) CreateProduct(p *models.Product) error {
+	if p.Price < 0 {
+		return errors.New("preço não pode ser negativo")
+	}
+	if p.StockQuantity < 0 {
+		return errors.New("quantidade em estoque não pode ser negativa")
+	}
+	return uc.repo.Create(p)
+}
+
+func (uc *ProductUseCase) GetAllProducts() ([]models.Product, error) {
+	return uc.repo.FindAll()
+}
+
+func (uc *ProductUseCase) GetProductByID(id int) (*models.Product, error) {
+	return uc.repo.FindByID(id)
+}
+
+func (uc *ProductUseCase) UpdateProduct(p *models.Product) error {
+	if p.Price < 0 {
+		return errors.New("preço não pode ser negativo")
+	}
+	return uc.repo.Update(p)
+}
+
+func (uc *ProductUseCase) DeleteProduct(id int) error {
+	return uc.repo.Delete(id)
+}
+
+
+
+// ============================================
+// internal/usecases/cart_usecase.go
+// ============================================
+package usecases
+
+import (
+	"errors"
+	"supermarket/internal/domain/repositories"
+)
+
+type CartUseCase struct {
+	cartRepo    *repositories.CartRepository
+	productRepo *repositories.ProductRepository
+}
+
+func NewCartUseCase(cartRepo *repositories.CartRepository, productRepo *repositories.ProductRepository) *CartUseCase {
+	return &CartUseCase{
+		cartRepo:    cartRepo,
+		productRepo: productRepo,
+	}
+}
+
+func (uc *CartUseCase) AddToCart(clientID, productID, quantity int) error {
+	if quantity <= 0 {
+		return errors.New("quantidade deve ser maior que zero")
+	}
+
+	cartID, err := uc.cartRepo.GetCartByClientID(clientID)
+	if err != nil {
+		return errors.New("carrinho não encontrado")
+	}
+
+	product, err := uc.productRepo.FindByID(productID)
+	if err != nil {
+		return errors.New("produto não encontrado")
+	}
+
+	return uc.cartRepo.AddItem(cartID, productID, quantity, product.Price)
+}
+
+func (uc *CartUseCase) GetCart(clientID int) (map[string]interface{}, error) {
+	items, total, err := uc.cartRepo.GetCartItems(clientID)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"client_id": clientID,
+		"items":     items,
+		"total":     total,
+	}, nil
+}
+
+func (uc *CartUseCase) RemoveFromCart(itemID int) error {
+	return uc.cartRepo.RemoveItem(itemID)
+}
+
+// ============================================
+// internal/usecases/promotion_usecase.go
+// ============================================
+package usecases
+
+import (
+	"supermarket/internal/domain/models"
+	"supermarket/internal/domain/repositories"
+)
+
+type PromotionUseCase struct {
+	repo *repositories.PromotionRepository
+}
+
+func NewPromotionUseCase(repo *repositories.PromotionRepository) *PromotionUseCase {
+	return &PromotionUseCase{repo: repo}
+}
+
+func (uc *PromotionUseCase) CreatePromotion(p *models.Promotion) error {
+	return uc.repo.Create(p)
+}
+
+func (uc *PromotionUseCase) GetAllPromotions() ([]models.Promotion, error) {
+	return uc.repo.FindAll()
+}
+
+func (uc *PromotionUseCase) AddProductToPromotion(promotionID, productID int) error {
+	return uc.repo.AddProduct(promotionID, productID)
+}
+
+// ============================================
+// internal/handlers/product_handler.go
+// ============================================
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"supermarket/internal/domain/models"
+	"supermarket/internal/usecases"
+	"supermarket/pkg/utils"
+
+	"github.com/gorilla/mux"
+)
+
+type ProductHandler struct {
+	useCase *usecases.ProductUseCase
+}
+
+func NewProductHandler(uc *usecases.ProductUseCase) *ProductHandler {
+	return &ProductHandler{useCase: uc}
+}
+
+func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var p models.Product
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.useCase.CreateProduct(&p); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, p)
+}
+
+func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	products, err := h.useCase.GetAllProducts()
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, products)
+}
+
+func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	product, err := h.useCase.GetProductByID(id)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Produto não encontrado")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, product)
+}
+
+func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	var p models.Product
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	p.ID = id
+	if err := h.useCase.UpdateProduct(&p); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, p)
+}
+
+func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	if err := h.useCase.DeleteProduct(id); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+
+
+
+
+
+// ============================================
+// internal/handlers/cart_handler.go
+// ============================================
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"supermarket/internal/usecases"
+	"supermarket/pkg/utils"
+
+	"github.com/gorilla/mux"
+)
+
+type CartHandler struct {
+	useCase *usecases.CartUseCase
+}
+
+func NewCartHandler(uc *usecases.CartUseCase) *CartHandler {
+	return &CartHandler{useCase: uc}
+}
+
+func (h *CartHandler) AddItem(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ClientID  int `json:"client_id"`
+		ProductID int `json:"product_id"`
+		Quantity  int `json:"quantity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.useCase.AddToCart(input.ClientID, input.ProductID, input.Quantity); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Produto adicionado ao carrinho"})
+}
+
+func (h *CartHandler) GetCart(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	clientID, _ := strconv.Atoi(params["client_id"])
+
+	cart, err := h.useCase.GetCart(clientID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, cart)
+}
+
+func (h *CartHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	itemID, _ := strconv.Atoi(params["item_id"])
+
+	if err := h.useCase.RemoveFromCart(itemID); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ============================================
+// internal/handlers/promotion_handler.go
+// ============================================
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+	"supermarket/internal/domain/models"
+	"supermarket/internal/usecases"
+	"supermarket/pkg/utils"
+)
+
+type PromotionHandler struct {
+	useCase *usecases.PromotionUseCase
+}
+
+func NewPromotionHandler(uc *usecases.PromotionUseCase) *PromotionHandler {
+	return &PromotionHandler{useCase: uc}
+}
+
+func (h *PromotionHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var p models.Promotion
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.useCase.CreatePromotion(&p); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, p)
+}
+
+func (h *PromotionHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	promotions, err := h.useCase.GetAllPromotions()
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, promotions)
+}
+
+func (h *PromotionHandler) AddProduct(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		PromotionID int `json:"promotion_id"`
+		ProductID   int `json:"product_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.useCase.AddProductToPromotion(input.PromotionID, input.ProductID); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Produto adicionado à promoção"})
+}
+
+// ============================================
+// internal/database/connection.go
+// ============================================
+package database
+
+import (
+	"database/sql"
+	"log"
+	"supermarket/pkg/config"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+func Connect() *sql.DB {
+	cfg := config.Get()
+	dsn := cfg.DBUser + ":" + cfg.DBPassword + "@tcp(" + cfg.DBHost + ":" + cfg.DBPort + ")/" + cfg.DBName + "?parseTime=true"
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal("Erro ao conectar ao MySQL:", err)
+	}
+
+	if err = db.Ping(); err != nil {
+		log.Fatal("Erro ao testar conexão:", err)
+	}
+
+	log.Println("✓ Conectado ao MySQL")
+	return db
+}
+
+// ============================================
+// pkg/utils/hash.go
+// ============================================
+package utils
+
+import "golang.org/x/crypto/bcrypt"
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+
+// ============================================
+// pkg/utils/response.go
+// ============================================
+package utils
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func RespondJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(payload)
+}
+
+func RespondError(w http.ResponseWriter, status int, message string) {
+	RespondJSON(w, status, map[string]string{"error": message})
+}
+
+// ============================================
+// pkg/utils/jwt.go
+// ============================================
+package utils
+
+import (
+	"errors"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"supermarket/pkg/config"
+)
+
+type Claims struct {
+	ClientID int    `json:"client_id"`
+	Email    string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+func GenerateToken(clientID int, email string) (string, error) {
+	cfg := config.Get()
+	expirationTime := time.Now().Add(24 * time.Hour)
+
+	claims := &Claims{
+		ClientID: clientID,
+		Email:    email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(cfg.JWTSecret))
+}
+
+func ValidateToken(tokenString string) (*Claims, error) {
+	cfg := config.Get()
+	claims := &Claims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.JWTSecret), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, errors.New("token inválido")
+	}
+
+	return claims, nil
+}
+
+// ============================================
+// pkg/config/config.go
+// ============================================
+package config
+
+import (
+	"os"
+)
+
+type Config struct {
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+	ServerPort string
+	JWTSecret  string
+}
+
+func Get() *Config {
+	return &Config{
+		DBHost:     getEnv("DB_HOST", "127.0.0.1"),
+		DBPort:     getEnv("DB_PORT", "3306"),
+		DBUser:     getEnv("DB_USER", "root"),
+		DBPassword: getEnv("DB_PASSWORD", "password"),
+		DBName:     getEnv("DB_NAME", "supermarket"),
+		ServerPort: getEnv("SERVER_PORT", "8080"),
+		JWTSecret:  getEnv("JWT_SECRET", "seu_secret_super_secreto_aqui"),
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+x

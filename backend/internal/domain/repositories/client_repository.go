@@ -1,3 +1,6 @@
+// ============================================
+// internal/domain/repositories/client_repository.go
+// ============================================
 package repositories
 
 import (
@@ -56,4 +59,14 @@ func (r *ClientRepository) FindAll() ([]models.Client, error) {
 		clients = append(clients, c)
 	}
 	return clients, nil
+}
+
+func (r *ClientRepository) FindByEmail(email string) (*models.Client, error) {
+	query := "SELECT id, name, email, password_hash, created_at, updated_at FROM client WHERE email = ?"
+	var c models.Client
+	err := r.db.QueryRow(query, email).Scan(&c.ID, &c.Name, &c.Email, &c.PasswordHash, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }

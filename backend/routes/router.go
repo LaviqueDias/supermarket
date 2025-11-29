@@ -5,8 +5,11 @@ package routes
 
 import (
 	"database/sql"
+	"net/http"
+
 	"github.com/LaviqueDias/supermarket/internal/domain/repositories"
 	"github.com/LaviqueDias/supermarket/internal/handlers"
+	"github.com/LaviqueDias/supermarket/internal/middleware"
 	"github.com/LaviqueDias/supermarket/internal/usecases"
 
 	"github.com/gorilla/mux"
@@ -34,26 +37,39 @@ func SetupRouter(db *sql.DB) *mux.Router {
 	// Configurar Router
 	r := mux.NewRouter()
 
-	// Rotas de Produtos
-	r.HandleFunc("/product", productHandler.Create).Methods("POST")
+	// Aplicar middlewares globais
+	r.Use(middleware.CORSMiddleware)
+	r.Use(middleware.LoggerMiddleware)
+
+	// Rotas Públicas (sem autenticação)
+	r.HandleFunc("/client/register", clientHandler.Register).Methods("POST")
+	r.HandleFunc("/client/login", clientHandler.Login).Methods("POST")
 	r.HandleFunc("/product", productHandler.GetAll).Methods("GET")
 	r.HandleFunc("/product/{id}", productHandler.GetByID).Methods("GET")
-	r.HandleFunc("/product/{id}", productHandler.Update).Methods("PUT")
-	r.HandleFunc("/product/{id}", productHandler.Delete).Methods("DELETE")
 
-	// Rotas de Clientes
-	r.HandleFunc("/client", clientHandler.Register).Methods("POST")
-	r.HandleFunc("/client", clientHandler.GetAll).Methods("GET")
+	// Rotas Protegidas (com autenticação JWT)
+	protected := r.PathPrefix("/").Subrouter()
+	protected.Use(func(next http.Handler) http.Handler {
+		return middleware.AuthMiddleware(next)
+	})
 
-	// Rotas de Carrinho
-	r.HandleFunc("/cart/add", cartHandler.AddItem).Methods("POST")
-	r.HandleFunc("/cart/{client_id}", cartHandler.GetCart).Methods("GET")
-	r.HandleFunc("/cart/item/{item_id}", cartHandler.RemoveItem).Methods("DELETE")
+	// Produtos (protegidos)
+	protected.HandleFunc("/product", productHandler.Create).Methods("POST")
+	protected.HandleFunc("/product/{id}", productHandler.Update).Methods("PUT")
+	protected.HandleFunc("/product/{id}", productHandler.Delete).Methods("DELETE")
 
-	// Rotas de Promoções
-	r.HandleFunc("/promotion", promotionHandler.Create).Methods("POST")
-	r.HandleFunc("/promotion", promotionHandler.GetAll).Methods("GET")
-	r.HandleFunc("/promotion/add-product", promotionHandler.AddProduct).Methods("POST")
+	// Clientes (protegidos)
+	protected.HandleFunc("/client", clientHandler.GetAll).Methods("GET")
+
+	// Carrinho (protegidos)
+	protected.HandleFunc("/cart/add", cartHandler.AddItem).Methods("POST")
+	protected.HandleFunc("/cart/{client_id}", cartHandler.GetCart).Methods("GET")
+	protected.HandleFunc("/cart/item/{item_id}", cartHandler.RemoveItem).Methods("DELETE")
+
+	// Promoções (protegidas)
+	protected.HandleFunc("/promotion", promotionHandler.Create).Methods("POST")
+	protected.HandleFunc("/promotion", promotionHandler.GetAll).Methods("GET")
+	protected.HandleFunc("/promotion/add-product", promotionHandler.AddProduct).Methods("POST")
 
 	return r
 }

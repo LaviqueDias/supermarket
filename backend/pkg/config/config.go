@@ -11,6 +11,7 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	ServerPort string
+	JWTSecret  string
 }
 
 func Get() *Config {
@@ -21,6 +22,7 @@ func Get() *Config {
 		DBPassword: getEnv("DB_PASSWORD", "root"),
 		DBName:     getEnv("DB_NAME", "supermarket"),
 		ServerPort: getEnv("SERVER_PORT", ":8081"),
+		JWTSecret:  getEnv("JWT_SECRET", "scnhasicasiascascascascascashgmjdtghmns"),
 	}
 }
 
