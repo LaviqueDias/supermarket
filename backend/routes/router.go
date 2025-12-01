@@ -42,16 +42,16 @@ func SetupRouter(db *sql.DB) *mux.Router {
 	// ROTAS PÚBLICAS (sem autenticação)
 	
 	// Clientes
-	r.HandleFunc("/clients/register", clientHandler.Register).Methods("POST")
-	r.HandleFunc("/clients/login", clientHandler.Login).Methods("POST")
+	r.HandleFunc("/client/register", clientHandler.Register).Methods("POST")
+	r.HandleFunc("/client/login", clientHandler.Login).Methods("POST")
 	
 	// Funcionários
-	r.HandleFunc("/employees/register", employeeHandler.Register).Methods("POST")
-	r.HandleFunc("/employees/login", employeeHandler.Login).Methods("POST")
+	r.HandleFunc("/employee/register", employeeHandler.Register).Methods("POST")
+	r.HandleFunc("/employee/login", employeeHandler.Login).Methods("POST")
 	
 	// Produtos (visualização pública)
-	r.HandleFunc("/products", productHandler.GetAll).Methods("GET")
-	r.HandleFunc("/products/{id}", productHandler.GetByID).Methods("GET")
+	r.HandleFunc("/product", productHandler.GetAll).Methods("GET")
+	r.HandleFunc("/product/{id}", productHandler.GetByID).Methods("GET")
 
 	// ROTAS PROTEGIDAS - APENAS FUNCIONÁRIOS
 	
@@ -61,18 +61,18 @@ func SetupRouter(db *sql.DB) *mux.Router {
 	})
 
 	// Produtos (CRUD completo - apenas employees)
-	employeeRoutes.HandleFunc("/products", productHandler.Create).Methods("POST")
-	employeeRoutes.HandleFunc("/products/{id}", productHandler.Update).Methods("PUT")
-	employeeRoutes.HandleFunc("/products/{id}", productHandler.Delete).Methods("DELETE")
+	employeeRoutes.HandleFunc("/product", productHandler.Create).Methods("POST")
+	employeeRoutes.HandleFunc("/product/{id}", productHandler.Update).Methods("PUT")
+	employeeRoutes.HandleFunc("/product/{id}", productHandler.Delete).Methods("DELETE")
 
 	// Promoções (CRUD completo - apenas employees)
-	employeeRoutes.HandleFunc("/promotions", promotionHandler.Create).Methods("POST")
-	employeeRoutes.HandleFunc("/promotions", promotionHandler.GetAll).Methods("GET")
-	employeeRoutes.HandleFunc("/promotions/add-product", promotionHandler.AddProduct).Methods("POST")
+	employeeRoutes.HandleFunc("/promotion", promotionHandler.Create).Methods("POST")
+	employeeRoutes.HandleFunc("/promotion", promotionHandler.GetAll).Methods("GET")
+	employeeRoutes.HandleFunc("/promotion/add-product", promotionHandler.AddProduct).Methods("POST")
 
 	// Gerenciar clientes e funcionários
-	employeeRoutes.HandleFunc("/clients", clientHandler.GetAll).Methods("GET")
-	employeeRoutes.HandleFunc("/employees", employeeHandler.GetAll).Methods("GET")
+	employeeRoutes.HandleFunc("/client", clientHandler.GetAll).Methods("GET")
+	employeeRoutes.HandleFunc("/employee", employeeHandler.GetAll).Methods("GET")
 
 	// ROTAS PROTEGIDAS - APENAS CLIENTES
 	
