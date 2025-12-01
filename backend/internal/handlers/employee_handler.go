@@ -7,19 +7,20 @@ import (
 	"github.com/LaviqueDias/supermarket/pkg/utils"
 )
 
-type ClientHandler struct {
-	useCase *usecases.ClientUseCase
+type EmployeeHandler struct {
+	useCase *usecases.EmployeeUseCase
 }
 
-func NewClientHandler(uc *usecases.ClientUseCase) *ClientHandler {
-	return &ClientHandler{useCase: uc}
+func NewEmployeeHandler(uc *usecases.EmployeeUseCase) *EmployeeHandler {
+	return &EmployeeHandler{useCase: uc}
 }
 
-func (h *ClientHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *EmployeeHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Name     string `json:"name"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -27,16 +28,16 @@ func (h *ClientHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := h.useCase.RegisterClient(input.Name, input.Email, input.Password)
+	employee, err := h.useCase.RegisterEmployee(input.Name, input.Email, input.Password, input.Role)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusCreated, client)
+	utils.RespondJSON(w, http.StatusCreated, employee)
 }
 
-func (h *ClientHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *EmployeeHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -47,25 +48,25 @@ func (h *ClientHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, token, err := h.useCase.Login(input.Email, input.Password)
+	employee, token, err := h.useCase.Login(input.Email, input.Password)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	response := map[string]interface{}{
-		"client": client,
-		"token":  token,
+		"employee": employee,
+		"token":    token,
 	}
 
 	utils.RespondJSON(w, http.StatusOK, response)
 }
 
-func (h *ClientHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	clients, err := h.useCase.GetAllClients()
+func (h *EmployeeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	employees, err := h.useCase.GetAllEmployees()
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	utils.RespondJSON(w, http.StatusOK, clients)
+	utils.RespondJSON(w, http.StatusOK, employees)
 }

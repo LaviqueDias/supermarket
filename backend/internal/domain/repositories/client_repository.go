@@ -1,6 +1,3 @@
-// ============================================
-// internal/domain/repositories/client_repository.go
-// ============================================
 package repositories
 
 import (

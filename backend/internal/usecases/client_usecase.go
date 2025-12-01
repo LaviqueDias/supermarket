@@ -1,3 +1,5 @@
+
+
 // ============================================
 // internal/usecases/client_usecase.go
 // ============================================
@@ -52,7 +54,7 @@ func (uc *ClientUseCase) Login(email, password string) (*models.Client, string, 
 		return nil, "", errors.New("credenciais inválidas")
 	}
 
-	token, err := utils.GenerateToken(client.ID, client.Email)
+	token, err := utils.GenerateToken(client.ID, client.Email, "client", "")
 	if err != nil {
 		return nil, "", err
 	}

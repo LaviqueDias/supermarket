@@ -1,6 +1,3 @@
-// ============================================
-// pkg/utils/jwt.go
-// ============================================
 package utils
 
 import (
@@ -12,18 +9,22 @@ import (
 )
 
 type Claims struct {
-	ClientID int    `json:"client_id"`
+	UserID   int    `json:"user_id"`
 	Email    string `json:"email"`
+	UserType string `json:"user_type"` // "client" ou "employee"
+	Role     string `json:"role,omitempty"` // Apenas para employees
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(clientID int, email string) (string, error) {
+func GenerateToken(userID int, email, userType, role string) (string, error) {
 	cfg := config.Get()
 	expirationTime := time.Now().Add(24 * time.Hour)
 
 	claims := &Claims{
-		ClientID: clientID,
+		UserID:   userID,
 		Email:    email,
+		UserType: userType,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
